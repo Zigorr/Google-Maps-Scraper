@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 class BusinessFilter:
     """
-    Intelligent business filtering system for lead qualification.
+    Optimized business filtering system for lead qualification.
     Identifies businesses without established websites that are ideal for outreach.
     """
     
@@ -30,6 +30,30 @@ class BusinessFilter:
             'google.com', 'maps.google.com', 'googleusercontent.com',
             'gstatic.com', 'googleapis.com'
         ]
+        
+        # Compiled regex patterns for better performance
+        self.instagram_patterns = [
+            re.compile(r'@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'instagram\.com/([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'ig:?\s*([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'follow.*?@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'insta:?\s*@?([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'check.*?@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'find.*?@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'visit.*?@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'see.*?@([a-zA-Z0-9_.]+)', re.IGNORECASE),
+            re.compile(r'on instagram:?\s*@?([a-zA-Z0-9_.]+)', re.IGNORECASE),
+        ]
+        
+        # Compiled phone pattern
+        self.phone_pattern = re.compile(r'\+?1?[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})')
+        
+        # Booking keywords for faster matching
+        self.booking_keywords = {
+            'squarespace': ['squarespace', 'square space', 'book online'],
+            'booksy': ['booksy', 'book with booksy'],
+            'general': ['book appointment', 'schedule online', 'online booking', 'appointment booking']
+        }
     
     def analyze_business(self, business_data: Dict) -> Dict:
         """
@@ -195,21 +219,8 @@ class BusinessFilter:
         description = description.lower()
         
         # Look for Instagram mentions with comprehensive patterns
-        instagram_patterns = [
-            r'@([a-zA-Z0-9_.]+)',  # @username
-            r'instagram\.com/([a-zA-Z0-9_.]+)',  # instagram.com/username
-            r'ig:?\s*([a-zA-Z0-9_.]+)',  # IG: username or ig username
-            r'follow.*?@([a-zA-Z0-9_.]+)',  # follow us @username
-            r'insta:?\s*@?([a-zA-Z0-9_.]+)',  # insta: @username or insta username
-            r'check.*?@([a-zA-Z0-9_.]+)',  # check us out @username
-            r'find.*?@([a-zA-Z0-9_.]+)',  # find us @username
-            r'visit.*?@([a-zA-Z0-9_.]+)',  # visit us @username
-            r'see.*?@([a-zA-Z0-9_.]+)',  # see us @username
-            r'on instagram:?\s*@?([a-zA-Z0-9_.]+)',  # on instagram @username
-        ]
-        
-        for pattern in instagram_patterns:
-            matches = re.findall(pattern, description, re.IGNORECASE)
+        for pattern in self.instagram_patterns:
+            matches = pattern.findall(description)
             if matches:
                 result['instagram_found'] = True
                 for match in matches:
@@ -217,21 +228,20 @@ class BusinessFilter:
                         result['instagram_links'].append(f"instagram.com/{match}")
         
         # Look for Squarespace mentions
-        if any(term in description for term in ['squarespace', 'square space', 'book online']):
+        if any(term in description for term in self.booking_keywords['squarespace']):
             result['squarespace_found'] = True
             # Try to extract actual Squarespace links
             squarespace_matches = re.findall(r'([\w.-]+\.squarespace\.com)', description)
             result['squarespace_links'].extend(squarespace_matches)
         
         # Look for Booksy mentions
-        if any(term in description for term in ['booksy', 'book with booksy']):
+        if any(term in description for term in self.booking_keywords['booksy']):
             result['booksy_found'] = True
             booksy_matches = re.findall(r'(booksy\.com/[\w/.-]+)', description)
             result['booksy_links'].extend(booksy_matches)
         
         # Look for other booking platform mentions
-        booking_keywords = ['book appointment', 'schedule online', 'online booking', 'appointment booking']
-        if any(keyword in description for keyword in booking_keywords):
+        if any(keyword in description for keyword in self.booking_keywords['general']):
             result['other_booking_found'] = True
         
         return result
@@ -331,21 +341,8 @@ class BusinessFilter:
                     result['instagram_handles'].append(username_match.group(1))
             
             # Instagram handle detection with comprehensive patterns
-            instagram_patterns = [
-                r'@([a-zA-Z0-9_.]+)',
-                r'instagram\.com/([a-zA-Z0-9_.]+)',
-                r'ig:?\s*@?([a-zA-Z0-9_.]+)',
-                r'insta:?\s*@?([a-zA-Z0-9_.]+)',
-                r'follow.*?@([a-zA-Z0-9_.]+)',
-                r'check.*?@([a-zA-Z0-9_.]+)',
-                r'find.*?@([a-zA-Z0-9_.]+)',
-                r'visit.*?@([a-zA-Z0-9_.]+)',
-                r'see.*?@([a-zA-Z0-9_.]+)',
-                r'on instagram:?\s*@?([a-zA-Z0-9_.]+)'
-            ]
-            
-            for pattern in instagram_patterns:
-                matches = re.findall(pattern, field_value, re.IGNORECASE)
+            for pattern in self.instagram_patterns:
+                matches = pattern.findall(field_value)
                 if matches:
                     result['instagram_found'] = True
                     for match in matches:

@@ -237,6 +237,18 @@ google-maps-scraper/
 - **Solution**: Changed to correct parameter `initialfile` for tkinter compatibility
 - **Impact**: Fixed CSV export crash, users can now save lead results successfully
 
+### v1.0.2 - Data Accuracy & Clean Interface
+**Issue**: Auto-filled fields and test data could contaminate real search results
+- **Problems**: 
+  - Input fields pre-filled with "nail salons" and "Nashville"
+  - Default max businesses set to 25 (potentially limiting results)
+  - Test functions with hardcoded data running automatically
+- **Solutions**:
+  - Removed all default values from input fields for clean start
+  - Increased default max businesses from 25 to 50 for better coverage
+  - Disabled automatic test execution in all modules
+- **Impact**: Ensures 100% clean, accurate results based solely on user input
+
 ## 📈 Project Status: COMPLETE ✅
 
 This comprehensive lead generation tool successfully addresses the manual, time-intensive process of finding qualified business prospects. The project demonstrates practical application of multiple technologies to create a complete business solution.

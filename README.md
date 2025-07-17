@@ -118,10 +118,8 @@ run_app.bat
 # Build standalone executable for distribution
 python build_exe.py
 
-# Test individual components:
-python scraper.py          # Test core scraping engine
-python data_filter.py      # Test filtering logic
-python lead_scraper.py     # Test integrated pipeline
+# Build standalone executable for distribution
+python build_exe.py
 ```
 
 ## 📁 Project Structure
@@ -133,7 +131,7 @@ google-maps-scraper/
 ├── scraper.py           # ✅ Core Google Maps scraping logic (COMPLETED)  
 ├── data_filter.py       # ✅ Business qualification algorithms (COMPLETED)
 ├── lead_scraper.py      # ✅ Integrated scraping and filtering pipeline (COMPLETED)
-├── run_app.bat          # ✅ Simple launcher for non-technical users (COMPLETED)
+├── run_app.bat          # ✅ Simple batch launcher (COMPLETED)
 ├── build_exe.py         # ✅ Executable builder for distribution (COMPLETED)
 ├── requirements.txt     # ✅ Python dependencies (COMPLETED)
 ├── .cursor/rules        # Development guidelines and progress tracking
@@ -178,7 +176,7 @@ google-maps-scraper/
 - Enhanced stability with retry mechanisms
 - Graceful handling of connection failures
 
-**Test Command:** `python scraper.py`
+**Status:** Production ready
 
 ### ✅ Phase 2 - Intelligent Filtering Logic (COMPLETED)
 **Key Accomplishments:**
@@ -220,8 +218,7 @@ google-maps-scraper/
 **Distribution Options:**
 - `python main.py` - Run with Python installed
 - `run_app.bat` - Simple batch launcher (shows terminal)
-- `GoogleMapsLeadScraper.exe` - Main standalone executable
-- `GoogleMapsLeadScraper_Launcher.exe` - **Professional launcher (recommended)**
+- `GoogleMapsLeadScraper.exe` - Standalone executable (recommended)
 
 ## 🎯 Future Enhancements
 
@@ -250,22 +247,19 @@ google-maps-scraper/
   - Disabled automatic test execution in all modules
 - **Impact**: Ensures 100% clean, accurate results based solely on user input
 
-### v1.1.0 - Performance Optimization & Professional Launcher
-**Issue**: Slow scraping performance for large datasets and unprofessional terminal window
+### v1.1.0 - Performance Optimization
+**Issue**: Slow scraping performance for large datasets
 - **Performance Problems**:
   - Fixed delays causing unnecessary waiting (3s + 2s + 1s per business)
   - Inefficient scrolling with no content detection
   - Sequential element extraction within pages
-  - Batch file showing terminal window
 - **Solutions Applied**:
   - **Phase 1**: Intelligent delay optimization using WebDriverWait
-  - **Phase 4**: Professional launcher executable without terminal
   - **Enhanced Progress**: Real-time ETA calculations and progress tracking
 - **Performance Improvements**:
   - 25 businesses: 4-6 min → 2-3 min (40-50% faster)
   - 50 businesses: 8-12 min → 4-6 min (40-50% faster)
   - 100 businesses: 16-25 min → 8-12 min (40-50% faster)
-- **User Experience**: Professional launcher with loading screen, no terminal window
 
 ### v1.1.1 - Enhanced Instagram Detection
 **Issue**: Instagram accounts being missed in lead qualification (e.g., Pride & Glory Tattoo Parlor)

@@ -167,36 +167,4 @@ class LeadScraper:
     def close(self):
         """Clean up resources."""
         if self.scraper:
-            self.scraper.close()
-
-
-def main():
-    """Main function for testing the integrated lead scraper."""
-    print("🎯 Google Maps Lead Scraper - Integrated Test")
-    print("=" * 50)
-    
-    # Initialize the lead scraper
-    lead_scraper = LeadScraper(headless=False)
-    
-    try:
-        # Test with Nashville tattoo shops
-        results = lead_scraper.find_leads("tattoo shops", "Nashville", max_businesses=10)
-        
-        # Show results summary (already printed by find_leads)
-        if results['total_qualified'] > 0:
-            print(f"\n🎉 SUCCESS: Found {results['total_qualified']} qualified leads!")
-        else:
-            print(f"\n📋 No qualified leads found in this search.")
-            
-    except KeyboardInterrupt:
-        print("\n⏹️ Lead generation interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Error during lead generation: {e}")
-    finally:
-        lead_scraper.close()
-
-
-if __name__ == "__main__":
-    # Uncomment the line below to run tests
-    # main()
-    pass 
+            self.scraper.close() 

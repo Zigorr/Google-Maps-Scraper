@@ -54,45 +54,22 @@ def build_executable():
     try:
         # Run PyInstaller for main app
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("✅ Main app build completed successfully!")
+        print("✅ Build completed successfully!")
         
-        # Build launcher executable
-        print("\n🔨 Building professional launcher...")
-        launcher_cmd = [
-            "pyinstaller",
-            "--onefile",
-            "--windowed",
-            "--name", "GoogleMapsLeadScraper_Launcher",
-            "--icon=icon.ico" if os.path.exists("icon.ico") else "",
-            "--hidden-import", "tkinter",
-            "launcher.py"
-        ]
-        
-        # Remove empty icon parameter if no icon file
-        launcher_cmd = [arg for arg in launcher_cmd if arg]
-        
-        launcher_result = subprocess.run(launcher_cmd, check=True, capture_output=True, text=True)
-        print("✅ Launcher build completed successfully!")
-        
-        # Check if executables were created
+        # Check if executable was created
         exe_path = os.path.join("dist", "GoogleMapsLeadScraper.exe")
-        launcher_path = os.path.join("dist", "GoogleMapsLeadScraper_Launcher.exe")
         
-        if os.path.exists(exe_path) and os.path.exists(launcher_path):
+        if os.path.exists(exe_path):
             main_size = os.path.getsize(exe_path) / (1024 * 1024)  # Size in MB
-            launcher_size = os.path.getsize(launcher_path) / (1024 * 1024)  # Size in MB
             
-            print(f"\n📦 Main executable: {exe_path}")
+            print(f"\n📦 Executable: {exe_path}")
             print(f"📏 File size: {main_size:.1f} MB")
-            print(f"\n📦 Launcher executable: {launcher_path}")
-            print(f"📏 File size: {launcher_size:.1f} MB")
             
-            print("\n🎉 SUCCESS! Both executables are ready for distribution.")
+            print("\n🎉 SUCCESS! Executable is ready for distribution.")
             print("\n📋 Instructions for non-technical users:")
-            print("1. Copy both .exe files to any Windows computer")
-            print("2. Double-click 'GoogleMapsLeadScraper_Launcher.exe' for professional startup")
-            print("3. Or double-click 'GoogleMapsLeadScraper.exe' for direct launch")
-            print("4. No Python installation required!")
+            print("1. Copy the .exe file to any Windows computer")
+            print("2. Double-click 'GoogleMapsLeadScraper.exe' to launch")
+            print("3. No Python installation required!")
             print("\n⚠️ Note: The first run may take longer as Chrome driver downloads.")
         else:
             print("❌ Executable not found in dist folder")

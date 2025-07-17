@@ -534,28 +534,4 @@ class GoogleMapsScraper:
         """Close the WebDriver and clean up resources."""
         if self.driver:
             self.driver.quit()
-            print("🔒 Browser closed")
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Uncomment the code below to run tests
-    # scraper = GoogleMapsScraper(headless=False)
-    # 
-    # try:
-    #     # Test search
-    #     businesses = scraper.scrape_businesses("tattoo shops", "Nashville", max_businesses=5)
-    #     
-    #     # Print results
-    #     for i, business in enumerate(businesses, 1):
-    #         print(f"\n--- Business {i} ---")
-    #         for key, value in business.items():
-    #             print(f"{key}: {value}")
-    #             
-    # except KeyboardInterrupt:
-    #     print("\n⏹️ Scraping interrupted by user")
-    # except Exception as e:
-    #     print(f"❌ Error during scraping: {e}")
-    # finally:
-    #     scraper.close()
-    pass 
+            print("�� Browser closed") 

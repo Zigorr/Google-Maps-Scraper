@@ -93,10 +93,7 @@ class GoogleMapsScraper:
             
             self.driver.get(url)
             
-            # Wait for search results to load
-            time.sleep(3)
-            
-            # Check if results loaded successfully
+            # Wait for search results to load with intelligent waiting
             try:
                 self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='feed']")))
                 print("✅ Search results loaded successfully")
@@ -164,17 +161,28 @@ class GoogleMapsScraper:
         try:
             results_panel = self.driver.find_element(By.CSS_SELECTOR, "[role='feed']")
             
-            # Scroll multiple times to load more results
+            # Scroll multiple times to load more results with intelligent content detection
             for i in range(5):
                 try:
                     # Check if browser is still connected
                     if not self._is_browser_connected():
                         print("⚠️ Browser disconnected during scrolling")
                         break
+                    
+                    # Get current number of results before scrolling
+                    previous_count = len(self.driver.find_elements(By.CSS_SELECTOR, "[role='feed'] > div"))
                         
                     self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", results_panel)
-                    time.sleep(2)
-                    print(f"📜 Scrolling... ({i+1}/5)")
+                    
+                    # Smart wait for new content to load
+                    try:
+                        WebDriverWait(self.driver, 3).until(
+                            lambda driver: len(driver.find_elements(By.CSS_SELECTOR, "[role='feed'] > div")) > previous_count
+                        )
+                        print(f"📜 Scrolling... ({i+1}/5) - New content loaded")
+                    except TimeoutException:
+                        print(f"📜 Scrolling... ({i+1}/5) - No new content, continuing")
+                        time.sleep(0.5)  # Brief pause if no new content
                 except WebDriverException as e:
                     if "invalid session id" in str(e).lower():
                         print("⚠️ Session lost during scrolling, stopping scroll")
@@ -193,6 +201,18 @@ class GoogleMapsScraper:
         except WebDriverException:
             return False
     
+    def _extract_phone_fallback(self, business_data: Dict) -> None:
+        """Fallback method for phone extraction using alternative selectors."""
+        try:
+            phone_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), '(') and contains(text(), ')')]")
+            for element in phone_elements:
+                text = element.text.strip()
+                if re.search(r'\(\d{3}\)\s?\d{3}-?\d{4}', text):
+                    business_data['phone'] = text
+                    break
+        except:
+            pass
+    
     def extract_business_data(self, business_url: str) -> Optional[Dict]:
         """
         Extract detailed information from a single business listing.
@@ -206,7 +226,12 @@ class GoogleMapsScraper:
         try:
             print(f"🏢 Extracting data from: {business_url}")
             self.driver.get(business_url)
-            time.sleep(2)
+            
+            # Wait for page to load with intelligent detection
+            try:
+                self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1")))
+            except TimeoutException:
+                print("⚠️ Page took too long to load, proceeding with extraction")
             
             business_data = {
                 'name': '',
@@ -217,62 +242,109 @@ class GoogleMapsScraper:
                 'url': business_url
             }
             
-            # Extract business name
-            try:
-                name_element = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1")))
-                business_data['name'] = name_element.text.strip()
-            except:
-                print("⚠️ Could not find business name")
+            # Extract all elements in parallel using multiple selectors
+            extraction_tasks = [
+                ('name', ["h1"], None),
+                ('phone', ["[data-item-id*='phone']"], self._extract_phone_fallback),
+                ('address', ["[data-item-id*='address']"], None),
+            ]
             
-            # Extract phone number
-            try:
-                phone_element = self.driver.find_element(By.CSS_SELECTOR, "[data-item-id*='phone']")
-                business_data['phone'] = phone_element.text.strip()
-            except:
-                # Alternative phone selector
+            for field, selectors, fallback_func in extraction_tasks:
                 try:
-                    phone_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), '(') and contains(text(), ')')]")
-                    for element in phone_elements:
-                        text = element.text.strip()
-                        if re.search(r'\(\d{3}\)\s?\d{3}-?\d{4}', text):
-                            business_data['phone'] = text
+                    element_found = False
+                    for selector in selectors:
+                        try:
+                            element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                            business_data[field] = element.text.strip()
+                            element_found = True
                             break
-                except:
-                    pass
+                        except:
+                            continue
+                    
+                    if not element_found and fallback_func:
+                        fallback_func(business_data)
+                    elif not element_found:
+                        print(f"⚠️ Could not find {field}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error extracting {field}: {e}")
             
-            # Extract address
+            # Extract website with comprehensive selectors
             try:
-                address_element = self.driver.find_element(By.CSS_SELECTOR, "[data-item-id*='address']")
-                business_data['address'] = address_element.text.strip()
-            except:
-                print("⚠️ Could not find address")
-            
-            # Extract website
-            try:
-                website_element = self.driver.find_element(By.CSS_SELECTOR, "[data-item-id*='authority']")
-                business_data['website'] = website_element.text.strip()
-            except:
-                # Alternative website selector
-                try:
-                    website_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, 'http') and not(contains(@href, 'google.com'))]")
-                    for link in website_links:
-                        href = link.get_attribute('href')
-                        if self._is_website_link(href):
-                            business_data['website'] = href
-                            break
-                except:
-                    pass
-            
-            # Extract description/overview
-            try:
-                description_elements = self.driver.find_elements(By.CSS_SELECTOR, "[class*='review'] span, [class*='description'] span")
-                descriptions = []
-                for element in description_elements:
-                    text = element.text.strip()
-                    if len(text) > 20:  # Only include substantial text
-                        descriptions.append(text)
+                website_selectors = [
+                    "[data-item-id*='authority']",
+                    "[data-item-id*='website']",
+                    "a[href*='instagram.com']",
+                    "a[href*='facebook.com']",
+                    "a[href*='twitter.com']"
+                ]
                 
-                business_data['description'] = ' '.join(descriptions[:3])  # Take first 3 substantial descriptions
+                website_found = False
+                for selector in website_selectors:
+                    try:
+                        website_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                        if selector.startswith("a[href"):
+                            # For link elements, get the href attribute
+                            business_data['website'] = website_element.get_attribute('href')
+                        else:
+                            # For text elements, get the text content
+                            business_data['website'] = website_element.text.strip()
+                        website_found = True
+                        break
+                    except:
+                        continue
+                
+                if not website_found:
+                    # Alternative website selector - look for any external links
+                    try:
+                        website_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, 'http') and not(contains(@href, 'google.com'))]")
+                        for link in website_links:
+                            href = link.get_attribute('href')
+                            if self._is_website_link(href):
+                                business_data['website'] = href
+                                break
+                    except:
+                        pass
+            except:
+                pass
+            
+            # Extract description/overview with comprehensive selectors
+            try:
+                description_selectors = [
+                    "[class*='review'] span",
+                    "[class*='description'] span", 
+                    "[data-section-id='overview'] span",
+                    "[data-section-id='overview'] div",
+                    "div[role='region'] span",
+                    ".section-editorial-quote",
+                    ".section-editorial-text",
+                    "[class*='editorial'] span",
+                    "[class*='about'] span",
+                    "span[class*='text']"
+                ]
+                
+                descriptions = []
+                for selector in description_selectors:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        for element in elements:
+                            text = element.text.strip()
+                            if len(text) > 10 and text not in descriptions:  # Avoid duplicates, lower threshold
+                                descriptions.append(text)
+                    except:
+                        continue
+                
+                # Also check for any text that might contain Instagram handles
+                try:
+                    all_text_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), '@') or contains(text(), 'instagram') or contains(text(), 'insta')]")
+                    for element in all_text_elements:
+                        text = element.text.strip()
+                        if len(text) > 5 and text not in descriptions:
+                            descriptions.append(text)
+                except:
+                    pass
+                
+                business_data['description'] = ' '.join(descriptions[:5])  # Take first 5 descriptions
             except:
                 pass
             
@@ -361,8 +433,8 @@ class GoogleMapsScraper:
                 if business_data:
                     all_business_data.append(business_data)
                 
-                # Add delay between requests to be respectful
-                time.sleep(1)
+                # Brief delay between requests to be respectful
+                time.sleep(0.5)
             
             print(f"\n✅ Scraping completed! Extracted data from {len(all_business_data)} businesses")
             return all_business_data

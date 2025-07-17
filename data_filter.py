@@ -114,8 +114,14 @@ class BusinessFilter:
             result['website_type'] = 'google'
             return result
         
-        # Check for Instagram
-        if 'instagram.com' in domain:
+        # Check for Instagram (comprehensive detection)
+        instagram_indicators = [
+            'instagram.com',
+            'instagr.am',
+            'ig.me'
+        ]
+        
+        if any(indicator in domain for indicator in instagram_indicators):
             result['website_type'] = 'instagram'
             result['instagram_found'] = True
             result['instagram_links'].append(website)
@@ -165,12 +171,18 @@ class BusinessFilter:
         
         description = description.lower()
         
-        # Look for Instagram mentions
+        # Look for Instagram mentions with comprehensive patterns
         instagram_patterns = [
             r'@([a-zA-Z0-9_.]+)',  # @username
             r'instagram\.com/([a-zA-Z0-9_.]+)',  # instagram.com/username
             r'ig:?\s*([a-zA-Z0-9_.]+)',  # IG: username or ig username
             r'follow.*?@([a-zA-Z0-9_.]+)',  # follow us @username
+            r'insta:?\s*@?([a-zA-Z0-9_.]+)',  # insta: @username or insta username
+            r'check.*?@([a-zA-Z0-9_.]+)',  # check us out @username
+            r'find.*?@([a-zA-Z0-9_.]+)',  # find us @username
+            r'visit.*?@([a-zA-Z0-9_.]+)',  # visit us @username
+            r'see.*?@([a-zA-Z0-9_.]+)',  # see us @username
+            r'on instagram:?\s*@?([a-zA-Z0-9_.]+)',  # on instagram @username
         ]
         
         for pattern in instagram_patterns:
@@ -255,6 +267,70 @@ class BusinessFilter:
         result['qualification_reason'] = 'Has sufficient online presence'
         return result
     
+    def _comprehensive_instagram_detection(self, business: Dict) -> Dict:
+        """
+        Comprehensive Instagram detection across all business data fields.
+        
+        Args:
+            business (Dict): Business data dictionary
+            
+        Returns:
+            Dict: Instagram detection results
+        """
+        result = {
+            'instagram_found': False,
+            'instagram_links': [],
+            'instagram_handles': []
+        }
+        
+        # Check all fields for Instagram presence
+        fields_to_check = [
+            ('website', business.get('website', '')),
+            ('description', business.get('description', '')),
+            ('name', business.get('name', '')),
+            ('address', business.get('address', ''))
+        ]
+        
+        for field_name, field_value in fields_to_check:
+            if not field_value:
+                continue
+                
+            field_value = str(field_value).lower()
+            
+            # Direct Instagram URL detection
+            if 'instagram.com' in field_value or 'instagr.am' in field_value:
+                result['instagram_found'] = True
+                result['instagram_links'].append(field_value)
+                
+                # Extract username from URL
+                username_match = re.search(r'instagram\.com/([a-zA-Z0-9_.]+)', field_value)
+                if username_match:
+                    result['instagram_handles'].append(username_match.group(1))
+            
+            # Instagram handle detection with comprehensive patterns
+            instagram_patterns = [
+                r'@([a-zA-Z0-9_.]+)',
+                r'instagram\.com/([a-zA-Z0-9_.]+)',
+                r'ig:?\s*@?([a-zA-Z0-9_.]+)',
+                r'insta:?\s*@?([a-zA-Z0-9_.]+)',
+                r'follow.*?@([a-zA-Z0-9_.]+)',
+                r'check.*?@([a-zA-Z0-9_.]+)',
+                r'find.*?@([a-zA-Z0-9_.]+)',
+                r'visit.*?@([a-zA-Z0-9_.]+)',
+                r'see.*?@([a-zA-Z0-9_.]+)',
+                r'on instagram:?\s*@?([a-zA-Z0-9_.]+)'
+            ]
+            
+            for pattern in instagram_patterns:
+                matches = re.findall(pattern, field_value, re.IGNORECASE)
+                if matches:
+                    result['instagram_found'] = True
+                    for match in matches:
+                        if match not in result['instagram_handles']:
+                            result['instagram_handles'].append(match)
+        
+        return result
+
     def filter_businesses(self, businesses: List[Dict]) -> Dict:
         """
         Filter a list of businesses and return qualified leads.
@@ -272,11 +348,23 @@ class BusinessFilter:
         
         for i, business in enumerate(businesses, 1):
             analysis = self.analyze_business(business)
+            
+            # Add comprehensive Instagram detection
+            instagram_analysis = self._comprehensive_instagram_detection(business)
+            analysis.update(instagram_analysis)
+            
+            # Update qualification based on comprehensive Instagram detection
+            if instagram_analysis['instagram_found'] and not analysis['has_real_website']:
+                analysis['is_qualified_lead'] = True
+                if 'Instagram-only presence' not in analysis['qualification_reason']:
+                    analysis['qualification_reason'] += ' + Instagram-only presence detected'
+            
             all_analysis.append(analysis)
             
             if analysis['is_qualified_lead']:
                 qualified_leads.append(analysis)
-                print(f"✅ Lead {len(qualified_leads)}: {analysis['business_name']} - {analysis['qualification_reason']}")
+                instagram_info = f" (IG: {', '.join(instagram_analysis['instagram_handles'])})" if instagram_analysis['instagram_handles'] else ""
+                print(f"✅ Lead {len(qualified_leads)}: {analysis['business_name']} - {analysis['qualification_reason']}{instagram_info}")
             else:
                 print(f"❌ Skip: {analysis['business_name']} - {analysis['qualification_reason']}")
         

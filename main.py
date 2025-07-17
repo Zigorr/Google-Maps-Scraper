@@ -139,8 +139,8 @@ class GoogleMapsLeadScraperGUI:
         progress_frame = ttk.LabelFrame(self.root, text="Progress", padding="10")
         progress_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Progress bar
-        self.progress = ttk.Progressbar(progress_frame, mode='indeterminate')
+        # Progress bar (determinate mode for better tracking)
+        self.progress = ttk.Progressbar(progress_frame, mode='determinate', maximum=100)
         self.progress.pack(fill=tk.X, pady=5)
         
         # Status label
@@ -213,6 +213,34 @@ class GoogleMapsLeadScraperGUI:
         
         return True
     
+    def update_progress(self, current, total, status):
+        """Update progress bar and status with ETA calculation."""
+        if total > 0:
+            progress = (current / total) * 100
+            self.progress['value'] = progress
+            
+            # Calculate ETA if we have started processing
+            if hasattr(self, 'start_time') and current > 0:
+                elapsed = time.time() - self.start_time
+                rate = current / elapsed  # businesses per second
+                remaining = total - current
+                eta_seconds = remaining / rate if rate > 0 else 0
+                
+                # Format ETA
+                if eta_seconds > 60:
+                    eta_str = f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
+                else:
+                    eta_str = f"{int(eta_seconds)}s"
+                
+                # Update status with ETA
+                self.status_var.set(f"{status} ({current}/{total}) - ETA: {eta_str}")
+            else:
+                self.status_var.set(f"{status} ({current}/{total})")
+        else:
+            self.status_var.set(status)
+        
+        self.root.update_idletasks()
+
     def start_search(self):
         """Start the lead search process."""
         if not self.validate_inputs():
@@ -232,9 +260,10 @@ class GoogleMapsLeadScraperGUI:
         self.export_button.config(state=tk.DISABLED)
         self.clear_button.config(state=tk.DISABLED)
         
-        # Start progress animation
-        self.progress.start()
+        # Initialize progress tracking
+        self.progress['value'] = 0
         self.status_var.set("Initializing search...")
+        self.start_time = time.time()
         
         # Start search in separate thread
         search_thread = threading.Thread(target=self.run_search, daemon=True)

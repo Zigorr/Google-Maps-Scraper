@@ -229,6 +229,14 @@ google-maps-scraper/
 - **CRM Integration**: Direct export to popular CRM systems
 - **Bulk Processing**: Support for multiple search queries in batch
 
+## 🔧 Bug Fixes & Maintenance
+
+### v1.0.1 - CSV Export Fix
+**Issue**: CSV export functionality crashed due to invalid parameter in file dialog
+- **Problem**: `filedialog.asksaveasfilename()` was using incorrect parameter `initialname`
+- **Solution**: Changed to correct parameter `initialfile` for tkinter compatibility
+- **Impact**: Fixed CSV export crash, users can now save lead results successfully
+
 ## 📈 Project Status: COMPLETE ✅
 
 This comprehensive lead generation tool successfully addresses the manual, time-intensive process of finding qualified business prospects. The project demonstrates practical application of multiple technologies to create a complete business solution.

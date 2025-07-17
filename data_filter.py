@@ -392,4 +392,6 @@ def test_filter():
 
 
 if __name__ == "__main__":
-    test_filter() 
+    # Uncomment the line below to run tests
+    # test_filter()
+    pass 

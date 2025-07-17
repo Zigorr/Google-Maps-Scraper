@@ -388,22 +388,23 @@ class GoogleMapsScraper:
 
 # Example usage and testing
 if __name__ == "__main__":
-    # Test the scraper
-    scraper = GoogleMapsScraper(headless=False)
-    
-    try:
-        # Test search
-        businesses = scraper.scrape_businesses("tattoo shops", "Nashville", max_businesses=5)
-        
-        # Print results
-        for i, business in enumerate(businesses, 1):
-            print(f"\n--- Business {i} ---")
-            for key, value in business.items():
-                print(f"{key}: {value}")
-                
-    except KeyboardInterrupt:
-        print("\n⏹️ Scraping interrupted by user")
-    except Exception as e:
-        print(f"❌ Error during scraping: {e}")
-    finally:
-        scraper.close() 
+    # Uncomment the code below to run tests
+    # scraper = GoogleMapsScraper(headless=False)
+    # 
+    # try:
+    #     # Test search
+    #     businesses = scraper.scrape_businesses("tattoo shops", "Nashville", max_businesses=5)
+    #     
+    #     # Print results
+    #     for i, business in enumerate(businesses, 1):
+    #         print(f"\n--- Business {i} ---")
+    #         for key, value in business.items():
+    #             print(f"{key}: {value}")
+    #             
+    # except KeyboardInterrupt:
+    #     print("\n⏹️ Scraping interrupted by user")
+    # except Exception as e:
+    #     print(f"❌ Error during scraping: {e}")
+    # finally:
+    #     scraper.close()
+    pass 

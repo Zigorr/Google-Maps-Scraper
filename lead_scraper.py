@@ -197,4 +197,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    # Uncomment the line below to run tests
+    # main()
+    pass 

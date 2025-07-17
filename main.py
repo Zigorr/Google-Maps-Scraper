@@ -73,7 +73,7 @@ class GoogleMapsLeadScraperGUI:
         
         # Keyword input
         ttk.Label(input_frame, text="Business Type:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.keyword_var = tk.StringVar(value="nail salons")
+        self.keyword_var = tk.StringVar()
         self.keyword_entry = ttk.Entry(input_frame, textvariable=self.keyword_var, width=40)
         self.keyword_entry.grid(row=0, column=1, padx=(10, 0), pady=5, sticky=tk.W)
         ttk.Label(input_frame, text="(e.g., nail salons, barbershops, massage therapy)", 
@@ -81,7 +81,7 @@ class GoogleMapsLeadScraperGUI:
         
         # City input
         ttk.Label(input_frame, text="City:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.city_var = tk.StringVar(value="Nashville")
+        self.city_var = tk.StringVar()
         self.city_entry = ttk.Entry(input_frame, textvariable=self.city_var, width=40)
         self.city_entry.grid(row=1, column=1, padx=(10, 0), pady=5, sticky=tk.W)
         ttk.Label(input_frame, text="(e.g., Nashville, Miami, Los Angeles)", 
@@ -89,7 +89,7 @@ class GoogleMapsLeadScraperGUI:
         
         # Max businesses
         ttk.Label(input_frame, text="Max Businesses:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        self.max_businesses_var = tk.StringVar(value="25")
+        self.max_businesses_var = tk.StringVar(value="50")
         max_spinbox = ttk.Spinbox(input_frame, from_=5, to=100, textvariable=self.max_businesses_var, width=10)
         max_spinbox.grid(row=2, column=1, padx=(10, 0), pady=5, sticky=tk.W)
         ttk.Label(input_frame, text="(Higher numbers take longer but find more leads)", 

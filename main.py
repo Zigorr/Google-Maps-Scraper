@@ -235,9 +235,7 @@ class GoogleMapsLeadScraperGUI:
                 # Update status with ETA
                 self.status_var.set(f"{status} ({current}/{total}) - ETA: {eta_str}")
             else:
-                self.status_var.set(f"{status} ({current}/{total})")
-        else:
-            self.status_var.set(status)
+                self.status_var.set(status)
         
         self.root.update_idletasks()
 
@@ -313,16 +311,54 @@ class GoogleMapsLeadScraperGUI:
             self.root.after(0, lambda: self.progress.config(mode='determinate'))
             self.root.after(0, lambda: self.progress.config(value=0))
             
-            # Run the search with custom progress updates
+            # Run the search with enhanced progress monitoring
             self.root.after(0, lambda: self.status_var.set("Browser ready - starting search..."))
             
-            # Redirect output to capture progress
+            # Enhanced output capture with real-time updates
             import io
             import sys
             
-            # Capture output
+            # Create a custom output handler for real-time updates
+            class ProgressCapture(io.StringIO):
+                def __init__(self, gui_instance):
+                    super().__init__()
+                    self.gui = gui_instance
+                    self.buffer = ""
+                
+                def write(self, text):
+                    super().write(text)
+                    self.buffer += text
+                    
+                    # Update GUI with key progress indicators
+                    if "🔍 Searching for:" in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Searching Google Maps..."))
+                    elif "📍 Processing" in text and "businesses..." in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Found businesses - starting data extraction..."))
+                    elif "📊 Processing" in text and "/" in text:
+                        # Extract progress from "📊 Processing 5/20 - 25.0%"
+                        try:
+                            parts = text.split("Processing ")[1].split(" - ")[0]
+                            current, total = parts.split("/")
+                            progress = (int(current) / int(total)) * 100
+                            self.gui.root.after(0, lambda p=progress: self.gui.progress.config(value=p))
+                            self.gui.root.after(0, lambda: self.gui.status_var.set(f"Extracting business data... ({current}/{total})"))
+                        except:
+                            pass
+                    elif "✅ Scraping completed!" in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Scraping completed - analyzing results..."))
+                    elif "🔄 Attempting to restart browser session" in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Browser session lost - attempting recovery..."))
+                    elif "✅ Browser session recovered" in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Browser session recovered - continuing..."))
+                    elif "❌ Browser disconnected" in text:
+                        self.gui.root.after(0, lambda: self.gui.status_var.set("Browser connection issue - attempting recovery..."))
+                    
+                    return len(text)
+            
+            # Capture output with real-time updates
             old_stdout = sys.stdout
-            sys.stdout = captured_output = io.StringIO()
+            captured_output = ProgressCapture(self)
+            sys.stdout = captured_output
             
             try:
                 results = self.scraper.find_leads(keyword, city, max_businesses)
@@ -339,12 +375,26 @@ class GoogleMapsLeadScraperGUI:
                 sys.stdout = old_stdout
                 
         except Exception as e:
-            # Handle errors
-            self.root.after(0, lambda: self.handle_search_error(str(e)))
+            # Handle errors with more detailed information
+            error_details = str(e)
+            if "Browser" in error_details or "WebDriver" in error_details:
+                error_type = "Browser Error"
+                user_message = f"Browser-related error occurred:\n{error_details}\n\nTry:\n• Closing all Chrome windows\n• Restarting the application\n• Checking your internet connection"
+            elif "timeout" in error_details.lower():
+                error_type = "Timeout Error"
+                user_message = f"Operation timed out:\n{error_details}\n\nTry:\n• Using a different search term\n• Reducing max businesses\n• Checking your internet connection"
+            else:
+                error_type = "Search Error"
+                user_message = f"An error occurred:\n{error_details}\n\nTry:\n• Different search terms\n• Checking your internet connection\n• Restarting the application"
+            
+            self.root.after(0, lambda: self.handle_search_error(user_message))
         finally:
-            # Clean up
+            # Enhanced cleanup
             if self.scraper:
-                self.scraper.close()
+                try:
+                    self.scraper.close()
+                except:
+                    pass
             self.root.after(0, self.search_completed)
     
     def display_results(self, results, output):

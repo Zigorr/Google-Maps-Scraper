@@ -276,14 +276,45 @@ class GoogleMapsLeadScraperGUI:
             city = self.city_var.get().strip()
             max_businesses = int(self.max_businesses_var.get())
             
-            # Update status
-            self.root.after(0, lambda: self.status_var.set(f"Searching for {keyword} in {city}..."))
+            # Update status with more detailed progress
+            self.root.after(0, lambda: self.status_var.set(f"Preparing to search for {keyword} in {city}..."))
+            time.sleep(0.5)  # Brief pause for UI update
             
-            # Initialize scraper
-            self.scraper = LeadScraper(headless=True)  # Use headless mode for GUI
+            # Initialize scraper with progress feedback
+            self.root.after(0, lambda: self.status_var.set("Starting browser (this may take 30-60 seconds)..."))
+            self.root.after(0, lambda: self.progress.config(mode='indeterminate'))
+            self.root.after(0, lambda: self.progress.start(10))
+            
+            # Progress callback for browser initialization
+            def browser_progress(message):
+                self.root.after(0, lambda: self.status_var.set(message))
+            
+            # Initialize scraper with progress callback and error handling
+            try:
+                self.scraper = LeadScraper(headless=True, progress_callback=browser_progress)
+            except Exception as e:
+                # Handle browser startup failure
+                self.root.after(0, lambda: self.progress.stop())
+                self.root.after(0, lambda: self.progress.config(mode='determinate'))
+                self.root.after(0, lambda: self.progress.config(value=0))
+                
+                error_msg = str(e)
+                if "timed out" in error_msg.lower():
+                    error_msg = "Browser startup timed out. Please close any Chrome windows and try again."
+                elif "chrome" in error_msg.lower():
+                    error_msg = "Chrome browser failed to start. Please ensure Chrome is installed and try again."
+                
+                self.root.after(0, lambda: messagebox.showerror("Browser Error", error_msg))
+                self.root.after(0, lambda: self.status_var.set("Browser failed to start"))
+                return
+            
+            # Stop indeterminate progress and switch to determinate
+            self.root.after(0, lambda: self.progress.stop())
+            self.root.after(0, lambda: self.progress.config(mode='determinate'))
+            self.root.after(0, lambda: self.progress.config(value=0))
             
             # Run the search with custom progress updates
-            self.root.after(0, lambda: self.status_var.set("Opening browser..."))
+            self.root.after(0, lambda: self.status_var.set("Browser ready - starting search..."))
             
             # Redirect output to capture progress
             import io

@@ -89,21 +89,48 @@ class GoogleMapsScraper:
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
             # Setup Chrome service with optimized settings
+            print("🔧 Setting up Chrome driver...")
             service = ChromeService(ChromeDriverManager().install())
             service.log_path = None
             
-            # Initialize driver with optimized settings
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Initialize driver with optimized settings and timeout
+            print("🚀 Starting Chrome browser...")
+            import signal
             
-            # Set optimized timeouts
-            self.driver.set_page_load_timeout(15)  # Faster timeout
-            self.driver.implicitly_wait(2)  # Reduced implicit wait
-            self.wait = WebDriverWait(self.driver, 8)  # Faster explicit wait
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Chrome startup timed out")
             
-            # Execute performance optimization scripts
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            # Set timeout for Chrome startup (60 seconds)
+            if hasattr(signal, 'SIGALRM'):  # Unix systems
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(60)
             
-            print("✅ Chrome WebDriver optimized for maximum performance")
+            try:
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                
+                # Cancel timeout if successful
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                
+                print("✅ Chrome browser started successfully")
+                
+                # Set optimized timeouts
+                self.driver.set_page_load_timeout(15)  # Faster timeout
+                self.driver.implicitly_wait(2)  # Reduced implicit wait
+                self.wait = WebDriverWait(self.driver, 8)  # Faster explicit wait
+                
+                # Execute performance optimization scripts
+                self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                
+                print("✅ Chrome WebDriver optimized for maximum performance")
+                
+            except TimeoutError:
+                print("❌ Chrome startup timed out after 60 seconds")
+                raise Exception("Browser startup timed out - please try again")
+            except Exception as e:
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                raise e
             
         except Exception as e:
             print(f"❌ Failed to initialize Chrome WebDriver: {e}")

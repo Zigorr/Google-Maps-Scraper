@@ -15,15 +15,23 @@ class LeadScraper:
     Complete lead generation solution that scrapes Google Maps and filters for qualified leads.
     """
     
-    def __init__(self, headless: bool = False):
+    def __init__(self, headless: bool = False, progress_callback=None):
         """
         Initialize the lead scraper.
         
         Args:
             headless (bool): Whether to run browser in headless mode
+            progress_callback: Optional callback function for progress updates
         """
+        self.progress_callback = progress_callback
+        if self.progress_callback:
+            self.progress_callback("Initializing browser...")
+        
         self.scraper = GoogleMapsScraper(headless=headless)
         self.filter = BusinessFilter()
+        
+        if self.progress_callback:
+            self.progress_callback("Browser ready!")
         
     def find_leads(self, keyword: str, city: str, max_businesses: int = 50) -> Dict:
         """

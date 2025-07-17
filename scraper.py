@@ -48,15 +48,27 @@ class GoogleMapsScraper:
             chrome_options.add_argument("--disable-features=VizDisplayCompositor")
             chrome_options.add_argument("--remote-debugging-port=9222")
             
+            # Suppress GPU and other error messages
+            chrome_options.add_argument("--disable-logging")
+            chrome_options.add_argument("--disable-gpu-logging")
+            chrome_options.add_argument("--log-level=3")
+            chrome_options.add_argument("--silent")
+            chrome_options.add_argument("--disable-software-rasterizer")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            
             # Anti-detection measures
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
             
             # User agent to appear more human-like
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # Setup Chrome service
+            # Setup Chrome service with logging disabled
             service = ChromeService(ChromeDriverManager().install())
+            service.log_path = None
             
             # Initialize driver
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -276,7 +288,13 @@ class GoogleMapsScraper:
                     "[data-item-id*='website']",
                     "a[href*='instagram.com']",
                     "a[href*='facebook.com']",
-                    "a[href*='twitter.com']"
+                    "a[href*='twitter.com']",
+                    "a[href*='squarespace.com']",
+                    "a[href*='booksy.com']",
+                    "a[href*='acuityscheduling.com']",
+                    "a[href*='schedulicity.com']",
+                    "a[href*='vagaro.com']",
+                    "a[href*='styleseat.com']"
                 ]
                 
                 website_found = False
@@ -305,6 +323,19 @@ class GoogleMapsScraper:
                                 break
                     except:
                         pass
+                        
+                    # If still no website found, check for Squarespace-hosted sites by looking for powered-by text
+                    if not business_data['website']:
+                        try:
+                            # Look for any links that might be Squarespace-hosted (custom domains)
+                            all_links = self.driver.find_elements(By.TAG_NAME, "a")
+                            for link in all_links:
+                                href = link.get_attribute('href')
+                                if href and self._is_squarespace_hosted(href):
+                                    business_data['website'] = href
+                                    break
+                        except:
+                            pass
             except:
                 pass
             
@@ -320,7 +351,13 @@ class GoogleMapsScraper:
                     ".section-editorial-text",
                     "[class*='editorial'] span",
                     "[class*='about'] span",
-                    "span[class*='text']"
+                    "span[class*='text']",
+                    "[class*='hours'] span",
+                    "[class*='info'] span",
+                    "[class*='contact'] span",
+                    "[class*='details'] span",
+                    "div[class*='text'] span",
+                    "div[class*='content'] span"
                 ]
                 
                 descriptions = []
@@ -329,22 +366,37 @@ class GoogleMapsScraper:
                         elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                         for element in elements:
                             text = element.text.strip()
-                            if len(text) > 10 and text not in descriptions:  # Avoid duplicates, lower threshold
+                            if len(text) > 5 and text not in descriptions:  # Lower threshold for more content
                                 descriptions.append(text)
                     except:
                         continue
                 
-                # Also check for any text that might contain Instagram handles
+                # Also check for any text that might contain Instagram handles, Squarespace, or Booksy mentions
                 try:
-                    all_text_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), '@') or contains(text(), 'instagram') or contains(text(), 'insta')]")
-                    for element in all_text_elements:
+                    # Look for Instagram handles
+                    instagram_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), '@') or contains(text(), 'instagram') or contains(text(), 'insta') or contains(text(), 'IG:')]")
+                    for element in instagram_elements:
                         text = element.text.strip()
-                        if len(text) > 5 and text not in descriptions:
+                        if len(text) > 3 and text not in descriptions:
+                            descriptions.append(text)
+                    
+                    # Look for Squarespace mentions
+                    squarespace_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), 'squarespace') or contains(text(), 'square space') or contains(text(), 'book online') or contains(text(), 'online booking')]")
+                    for element in squarespace_elements:
+                        text = element.text.strip()
+                        if len(text) > 3 and text not in descriptions:
+                            descriptions.append(text)
+                    
+                    # Look for Booksy mentions
+                    booksy_elements = self.driver.find_elements(By.XPATH, "//span[contains(text(), 'booksy') or contains(text(), 'book appointment') or contains(text(), 'schedule online')]")
+                    for element in booksy_elements:
+                        text = element.text.strip()
+                        if len(text) > 3 and text not in descriptions:
                             descriptions.append(text)
                 except:
                     pass
                 
-                business_data['description'] = ' '.join(descriptions[:5])  # Take first 5 descriptions
+                business_data['description'] = ' '.join(descriptions[:10])  # Take first 10 descriptions for more comprehensive data
             except:
                 pass
             
@@ -379,6 +431,33 @@ class GoogleMapsScraper:
                 return False
                 
         return True
+
+    def _is_squarespace_hosted(self, url: str) -> bool:
+        """
+        Check if a URL is hosted on Squarespace.
+        
+        Args:
+            url (str): URL to check
+            
+        Returns:
+            bool: True if it's Squarespace-hosted
+        """
+        if not url:
+            return False
+            
+        # Common Squarespace subdomains and domains
+        squarespace_domains = [
+            'squarespace.com', 'squarespace.net', 'squarespace.org',
+            'squarespace.io', 'squarespace.co', 'squarespace.me',
+            'squarespace.app', 'squarespace.dev', 'squarespace.test',
+            'squarespace.local', 'squarespace.test', 'squarespace.dev'
+        ]
+        
+        for domain in squarespace_domains:
+            if domain in url.lower():
+                return True
+                
+        return False
     
     def scrape_businesses(self, keyword: str, city: str, max_businesses: int = 50, retry_on_failure: bool = True) -> List[Dict]:
         """

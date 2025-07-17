@@ -71,7 +71,30 @@ class BusinessFilter:
         
         # Analyze description for social media and booking links
         description_analysis = self._analyze_description(business_data.get('description', ''))
-        analysis.update(description_analysis)
+        # Merge description analysis with website analysis
+        for key in ['instagram_found', 'squarespace_found', 'booksy_found']:
+            if description_analysis.get(key, False):
+                analysis[key] = True
+        for key in ['instagram_links', 'squarespace_links', 'booksy_links']:
+            analysis[key].extend(description_analysis.get(key, []))
+        
+        # Add comprehensive Instagram detection across all fields
+        instagram_analysis = self._comprehensive_instagram_detection(business_data)
+        if instagram_analysis['instagram_found']:
+            analysis['instagram_found'] = True
+            analysis['instagram_links'].extend(instagram_analysis['instagram_links'])
+        
+        # Enhanced Squarespace detection
+        squarespace_analysis = self._comprehensive_squarespace_detection(business_data)
+        if squarespace_analysis['squarespace_found']:
+            analysis['squarespace_found'] = True
+            analysis['squarespace_links'].extend(squarespace_analysis['squarespace_links'])
+        
+        # Enhanced Booksy detection
+        booksy_analysis = self._comprehensive_booksy_detection(business_data)
+        if booksy_analysis['booksy_found']:
+            analysis['booksy_found'] = True
+            analysis['booksy_links'].extend(booksy_analysis['booksy_links'])
         
         # Determine if this is a qualified lead
         qualification = self._determine_qualification(analysis)
@@ -331,6 +354,118 @@ class BusinessFilter:
         
         return result
 
+    def _comprehensive_squarespace_detection(self, business: Dict) -> Dict:
+        """
+        Comprehensive Squarespace detection across all business data fields.
+        
+        Args:
+            business (Dict): Business data dictionary
+            
+        Returns:
+            Dict: Squarespace detection results
+        """
+        result = {
+            'squarespace_found': False,
+            'squarespace_links': []
+        }
+        
+        # Check all fields for Squarespace presence
+        fields_to_check = [
+            ('website', business.get('website', '')),
+            ('description', business.get('description', '')),
+            ('name', business.get('name', '')),
+            ('address', business.get('address', ''))
+        ]
+        
+        for field_name, field_value in fields_to_check:
+            if not field_value:
+                continue
+                
+            field_value = str(field_value).lower()
+            
+            # Direct Squarespace domain detection
+            squarespace_domains = [
+                'squarespace.com', 'squarespace.net', 'squarespace.org',
+                'squarespace.io', 'squarespace.co', 'squarespace.me',
+                'squarespace.app', 'squarespace.dev', 'squarespace.test',
+                'squarespace.local', 'static1.squarespace.com'
+            ]
+            
+            for domain in squarespace_domains:
+                if domain in field_value:
+                    result['squarespace_found'] = True
+                    result['squarespace_links'].append(field_value)
+                    break
+            
+            # Text-based Squarespace detection
+            squarespace_indicators = [
+                'squarespace', 'square space', 'book online', 'online booking',
+                'powered by squarespace', 'squarespace.com', 'schedule online',
+                'appointment booking', 'book appointment online'
+            ]
+            
+            for indicator in squarespace_indicators:
+                if indicator in field_value:
+                    result['squarespace_found'] = True
+                    break
+        
+        return result
+
+    def _comprehensive_booksy_detection(self, business: Dict) -> Dict:
+        """
+        Comprehensive Booksy detection across all business data fields.
+        
+        Args:
+            business (Dict): Business data dictionary
+            
+        Returns:
+            Dict: Booksy detection results
+        """
+        result = {
+            'booksy_found': False,
+            'booksy_links': []
+        }
+        
+        # Check all fields for Booksy presence
+        fields_to_check = [
+            ('website', business.get('website', '')),
+            ('description', business.get('description', '')),
+            ('name', business.get('name', '')),
+            ('address', business.get('address', ''))
+        ]
+        
+        for field_name, field_value in fields_to_check:
+            if not field_value:
+                continue
+                
+            field_value = str(field_value).lower()
+            
+            # Direct Booksy domain detection
+            booksy_domains = [
+                'booksy.com', 'booksy.biz', 'booksy.net', 'booksy.org',
+                'booksy.io', 'booksy.co', 'booksy.me', 'booksy.app'
+            ]
+            
+            for domain in booksy_domains:
+                if domain in field_value:
+                    result['booksy_found'] = True
+                    result['booksy_links'].append(field_value)
+                    break
+            
+            # Text-based Booksy detection
+            booksy_indicators = [
+                'booksy', 'book with booksy', 'booksy.com', 'booksy app',
+                'download booksy', 'book on booksy', 'booksy booking',
+                'book appointment', 'schedule appointment', 'book online'
+            ]
+            
+            for indicator in booksy_indicators:
+                if indicator in field_value:
+                    result['booksy_found'] = True
+                    break
+        
+        return result
+
     def filter_businesses(self, businesses: List[Dict]) -> Dict:
         """
         Filter a list of businesses and return qualified leads.
@@ -348,23 +483,21 @@ class BusinessFilter:
         
         for i, business in enumerate(businesses, 1):
             analysis = self.analyze_business(business)
-            
-            # Add comprehensive Instagram detection
-            instagram_analysis = self._comprehensive_instagram_detection(business)
-            analysis.update(instagram_analysis)
-            
-            # Update qualification based on comprehensive Instagram detection
-            if instagram_analysis['instagram_found'] and not analysis['has_real_website']:
-                analysis['is_qualified_lead'] = True
-                if 'Instagram-only presence' not in analysis['qualification_reason']:
-                    analysis['qualification_reason'] += ' + Instagram-only presence detected'
-            
             all_analysis.append(analysis)
             
             if analysis['is_qualified_lead']:
                 qualified_leads.append(analysis)
-                instagram_info = f" (IG: {', '.join(instagram_analysis['instagram_handles'])})" if instagram_analysis['instagram_handles'] else ""
-                print(f"✅ Lead {len(qualified_leads)}: {analysis['business_name']} - {analysis['qualification_reason']}{instagram_info}")
+                # Show detected platforms in output
+                platforms = []
+                if analysis['instagram_found']:
+                    platforms.append("IG")
+                if analysis['squarespace_found']:
+                    platforms.append("Squarespace")
+                if analysis['booksy_found']:
+                    platforms.append("Booksy")
+                
+                platform_info = f" ({', '.join(platforms)})" if platforms else ""
+                print(f"✅ Lead {len(qualified_leads)}: {analysis['business_name']} - {analysis['qualification_reason']}{platform_info}")
             else:
                 print(f"❌ Skip: {analysis['business_name']} - {analysis['qualification_reason']}")
         
@@ -434,36 +567,44 @@ def test_filter():
             'url': 'https://maps.google.com/test1'
         },
         {
-            'name': 'Instagram Only Tattoo',
+            'name': 'Pride & Glory Tattoo Parlor',
             'phone': '+1 615-555-0123',
             'address': '123 Music Row, Nashville, TN 37203',
-            'website': 'instagram.com/instagramonlytattoo',
-            'description': 'Follow us @instagramonlytattoo for latest work',
+            'website': '',
+            'description': 'Follow us @prideandglorytattoo for latest work and updates',
             'url': 'https://maps.google.com/test2'
         },
         {
-            'name': 'No Website Tattoo',
+            'name': 'Victory Tattoo',
             'phone': '+1 615-555-0124',
             'address': '456 Broadway, Nashville, TN 37203',
-            'website': '',
-            'description': 'Call for appointments',
+            'website': 'victorytattoo.squarespace.com',
+            'description': 'Book online through our Squarespace site',
             'url': 'https://maps.google.com/test3'
         },
         {
-            'name': 'Booksy Booking Tattoo',
+            'name': 'Monolith Tattoo Co.',
             'phone': '+1 615-555-0125',
             'address': '789 Main St, Nashville, TN 37203',
             'website': '',
-            'description': 'Book online with Booksy or call us directly',
+            'description': 'Schedule appointments online or call us directly',
             'url': 'https://maps.google.com/test4'
         },
         {
-            'name': 'Squarespace Booking Shop',
+            'name': 'Booksy Booking Shop',
             'phone': '+1 615-555-0126',
             'address': '321 Art St, Nashville, TN 37203',
-            'website': 'mybooking.squarespace.com',
-            'description': 'Online booking available',
+            'website': 'booksy.com/mybookingshop',
+            'description': 'Book with Booksy app or call us',
             'url': 'https://maps.google.com/test5'
+        },
+        {
+            'name': 'Instagram Only Shop',
+            'phone': '+1 615-555-0127',
+            'address': '654 Creative Ave, Nashville, TN 37203',
+            'website': 'instagram.com/instagramonlyshop',
+            'description': 'Check us out on IG: @instagramonlyshop',
+            'url': 'https://maps.google.com/test6'
         }
     ]
     
@@ -472,11 +613,22 @@ def test_filter():
     results = filter_engine.filter_businesses(sample_businesses)
     
     print(f"\n🧪 TEST RESULTS:")
-    print(f"Should have 4 qualified leads (all except 'Circa Tattoo')")
-    print(f"Actual qualified leads: {results['qualified_count']}")
+    print(f"📊 Total businesses tested: {results['total_businesses']}")
+    print(f"🎯 Qualified leads found: {results['qualified_count']}")
+    print(f"📈 Qualification rate: {results['qualification_rate']:.1f}%")
     
-    for lead in results['qualified_leads']:
-        print(f"✅ {lead['business_name']}: {lead['qualification_reason']}")
+    print(f"\n📱 Platform Detection Results:")
+    print(f"   • Instagram detected: {results['statistics']['instagram_count']}")
+    print(f"   • Squarespace detected: {results['statistics']['squarespace_count']}")
+    print(f"   • Booksy detected: {results['statistics']['booksy_count']}")
+    
+    print(f"\n✅ Expected Results:")
+    print(f"   • Pride & Glory Tattoo Parlor: Should detect Instagram (@prideandglorytattoo)")
+    print(f"   • Victory Tattoo: Should detect Squarespace (squarespace.com + 'book online')")
+    print(f"   • Booksy Booking Shop: Should detect Booksy (booksy.com + 'book with booksy')")
+    print(f"   • Instagram Only Shop: Should detect Instagram (instagram.com + @instagramonlyshop)")
+    print(f"   • Monolith Tattoo Co.: Should qualify (no website, phone/address only)")
+    print(f"   • Circa Tattoo: Should NOT qualify (has real website)")
 
 
 if __name__ == "__main__":

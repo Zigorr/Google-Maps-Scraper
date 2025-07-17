@@ -398,7 +398,7 @@ Contact support if the problem persists.
         filename = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            initialname=default_filename,
+            initialfile=default_filename,
             title="Save leads to CSV file"
         )
         

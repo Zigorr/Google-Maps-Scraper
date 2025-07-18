@@ -419,9 +419,24 @@ class GoogleMapsLeadScraperGUI:
 📞 Phone: {lead['phone']}
 📍 Address: {lead['address']}
 🏷️ Why qualified: {lead['qualification_reason']}
-📝 Notes: {lead['notes']}
-
 """
+                # Show what was found
+                found_items = []
+                if lead.get('instagram_found'):
+                    found_items.append(f"Instagram (@{lead.get('instagram_handle', 'found')})")
+                if lead.get('squarespace_found'):
+                    found_items.append("Squarespace booking")
+                if lead.get('booksy_found'):
+                    found_items.append("Booksy booking")
+                
+                if found_items:
+                    lead_info += f"🔗 Found: {', '.join(found_items)}\n"
+                
+                # Show notes if available
+                if lead.get('notes'):
+                    lead_info += f"📝 Notes: {lead['notes']}\n"
+                
+                lead_info += "\n"
                 self.results_text.insert(tk.END, lead_info)
                 
         else:
@@ -523,7 +538,7 @@ Contact support if the problem persists.
             messagebox.showerror("Export Error", f"Failed to export leads:\n{str(e)}")
     
     def save_to_csv(self, filename):
-        """Save the qualified leads to a CSV file."""
+        """Save the qualified leads to a CSV file matching client requirements."""
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = [
                 'Business Name',
@@ -544,11 +559,11 @@ Contact support if the problem persists.
                     'Business Name': lead['business_name'],
                     'Phone': lead['phone'],
                     'Address': lead['address'],
-                    'IG found?': 'Yes' if lead['instagram_found'] else 'No',
-                    'Squarespace link found?': 'Yes' if lead['squarespace_found'] else 'No', 
-                    'Booksy link found?': 'Yes' if lead['booksy_found'] else 'No',
+                    'IG found?': 'Yes' if lead.get('instagram_found', False) else 'No',
+                    'Squarespace link found?': 'Yes' if lead.get('squarespace_found', False) else 'No',
+                    'Booksy link found?': 'Yes' if lead.get('booksy_found', False) else 'No',
                     'Qualification Reason': lead['qualification_reason'],
-                    'Notes': lead['notes']
+                    'Notes': lead.get('notes', '')
                 })
     
     def on_closing(self):

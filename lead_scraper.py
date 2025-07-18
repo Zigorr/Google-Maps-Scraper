@@ -143,20 +143,22 @@ class LeadScraper:
                 print(f"📞 Phone: {lead['phone']}")
                 print(f"📍 Address: {lead['address']}")
                 print(f"🏷️ Reason: {lead['qualification_reason']}")
-                if lead['notes']:
-                    print(f"📝 Notes: {lead['notes']}")
                 
                 # Show what was found
                 found_items = []
-                if lead['instagram_found']:
-                    found_items.append("Instagram")
-                if lead['squarespace_found']:
-                    found_items.append("Squarespace")
-                if lead['booksy_found']:
-                    found_items.append("Booksy")
+                if lead.get('instagram_found'):
+                    found_items.append(f"Instagram (@{lead.get('instagram_handle', 'found')})")
+                if lead.get('squarespace_found'):
+                    found_items.append("Squarespace booking")
+                if lead.get('booksy_found'):
+                    found_items.append("Booksy booking")
                 
                 if found_items:
                     print(f"🔗 Found: {', '.join(found_items)}")
+                
+                # Show notes if available
+                if lead.get('notes'):
+                    print(f"📝 Notes: {lead['notes']}")
         
         # Print statistics
         stats = results['statistics']

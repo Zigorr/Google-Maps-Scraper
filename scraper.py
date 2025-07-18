@@ -371,8 +371,8 @@ class GoogleMapsScraper:
 
     def _classify_website(self, url: str) -> str:
         """Classifies a URL into predefined categories."""
-        if not url or not isinstance(url, str) or not re.match(r'^https?://', url):
-            return "N/A"
+        if not url or not isinstance(url, str) or url == "N/A" or not re.match(r'^https?://', url):
+            return "none"
         
         url_lower = url.lower()
         if 'instagram.com' in url_lower:
@@ -548,6 +548,9 @@ class GoogleMapsScraper:
         phone = self._get_element_text(By.CSS_SELECTOR, "button[data-item-id^='phone'] div.rogA2c")
         address = self._get_element_text(By.CSS_SELECTOR, "button[data-item-id='address'] div.rogA2c")
         website = self._get_element_attribute(By.CSS_SELECTOR, "a[data-item-id='authority']", "href")
+        
+        # Extract business description (crucial for finding Instagram links)
+        description = self._extract_business_description()
 
         # Fallback for website if authority link is not found
         if not website:
@@ -577,10 +580,74 @@ class GoogleMapsScraper:
             "address": address,
             "website": website_url,
             "website_type": website_type,
+            "description": description,
             "url": business_url
         }
 
         return business_data
+
+    def _extract_business_description(self) -> str:
+        """Extract business description from various sources on the page."""
+        description_parts = []
+        
+        try:
+            # Try to find description in the main content area
+            description_selectors = [
+                ".PYvSYb",  # Main description area
+                ".lMbq3e",  # Alternative description
+                ".fontBodyMedium .PYvSYb",  # Specific description format
+                "[data-attrid='description']",  # Description attribute
+                ".Io6YTe",  # Review snippets that might contain Instagram info
+                ".MyEned",  # Additional content areas
+                ".fontBodyMedium span",  # General text spans
+            ]
+            
+            for selector in description_selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for element in elements:
+                        text = element.text.strip()
+                        if text and len(text) > 10:  # Only meaningful text
+                            description_parts.append(text)
+                except:
+                    continue
+            
+            # Also check for any text that might contain Instagram mentions
+            try:
+                # Look for any text containing @ symbols (potential Instagram handles)
+                at_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), '@')]")
+                for element in at_elements:
+                    text = element.text.strip()
+                    if text and '@' in text:
+                        description_parts.append(text)
+            except:
+                pass
+            
+            # Look for Instagram-specific text patterns
+            try:
+                instagram_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'instagram') or contains(text(), 'Instagram') or contains(text(), 'IG') or contains(text(), 'ig')]")
+                for element in instagram_elements:
+                    text = element.text.strip()
+                    if text and len(text) < 200:  # Avoid huge blocks
+                        description_parts.append(text)
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"⚠️ Error extracting description: {e}")
+        
+        # Combine all parts and clean up
+        full_description = " ".join(description_parts)
+        
+        # Clean up the description
+        full_description = re.sub(r'\s+', ' ', full_description)  # Multiple spaces to single
+        full_description = full_description.strip()
+        
+        # Limit length to avoid excessive data
+        if len(full_description) > 1000:
+            full_description = full_description[:1000] + "..."
+        
+        return full_description
 
     def _is_website_link(self, url: str) -> bool:
         """

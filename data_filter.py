@@ -57,35 +57,153 @@ class BusinessFilter:
     
     def analyze_business(self, business_data: Dict) -> Dict:
         """
-        Analyze a single business and determine if it's a qualified lead.
+        Comprehensive business analysis matching client requirements.
+        Looks for Instagram links, Squarespace/Booksy booking, and determines lead qualification.
         """
-        website_type = business_data.get('website_type', 'none')
+        name = business_data.get('name', '')
+        phone = business_data.get('phone', '')
+        address = business_data.get('address', '')
         website = business_data.get('website', '')
-
+        website_type = business_data.get('website_type', 'none')
+        description = business_data.get('description', '')
+        
+        # Initialize analysis structure
         analysis = {
-            'business_name': business_data.get('name', ''),
-            'phone': business_data.get('phone', ''),
-            'address': business_data.get('address', ''),
+            'business_name': name,
+            'phone': phone,
+            'address': address,
             'original_website': website,
             'url': business_data.get('url', ''),
             'website_type': website_type,
             'is_qualified_lead': False,
-            'qualification_reason': ''
+            'qualification_reason': '',
+            'instagram_found': False,
+            'instagram_handle': '',
+            'squarespace_found': False,
+            'squarespace_link': '',
+            'booksy_found': False,
+            'booksy_link': '',
+            'notes': ''
         }
         
-        # Qualification logic based on pre-classified website type
-        if website_type in ['instagram', 'facebook', 'booksy', 'squarespace']:
+        # Step 1: Check if business has a real website (auto-disqualify)
+        if website_type == 'real_website':
+            analysis['qualification_reason'] = "Has established website"
+            analysis['notes'] = "Business has a dedicated website"
+            return analysis
+        
+        # Step 2: Look for Instagram links in description
+        instagram_info = self._find_instagram_links(description)
+        if instagram_info['found']:
+            analysis['instagram_found'] = True
+            analysis['instagram_handle'] = instagram_info['handle']
+            analysis['notes'] += f"Instagram: @{instagram_info['handle']}. "
+        
+        # Step 3: Look for Squarespace booking links
+        squarespace_info = self._find_squarespace_links(description, website)
+        if squarespace_info['found']:
+            analysis['squarespace_found'] = True
+            analysis['squarespace_link'] = squarespace_info['link']
+            analysis['notes'] += f"Squarespace booking: {squarespace_info['link']}. "
+        
+        # Step 4: Look for Booksy booking links
+        booksy_info = self._find_booksy_links(description, website)
+        if booksy_info['found']:
+            analysis['booksy_found'] = True
+            analysis['booksy_link'] = booksy_info['link']
+            analysis['notes'] += f"Booksy booking: {booksy_info['link']}. "
+        
+        # Step 5: Check for Facebook/Instagram website
+        if website_type in ['instagram', 'facebook']:
+            if website_type == 'instagram':
+                analysis['instagram_found'] = True
+                analysis['notes'] += f"Instagram website: {website}. "
+            analysis['notes'] += f"Uses {website_type.capitalize()} as website. "
+        
+        # Step 6: Determine qualification based on client criteria
+        has_instagram = analysis['instagram_found']
+        has_squarespace = analysis['squarespace_found']
+        has_booksy = analysis['booksy_found']
+        has_social_website = website_type in ['instagram', 'facebook']
+        has_no_website = website_type in ['none', 'N/A'] or not website or website == 'N/A'
+        
+        # Client's filtering logic: Include ONLY businesses that:
+        # ✅ Have an Instagram link
+        # ✅ Have a Squarespace booking link
+        # ✅ Have a Booksy link
+        # ✅ Have nothing listed at all (no website or link — just phone/address)
+        if has_instagram or has_squarespace or has_booksy or has_social_website or has_no_website:
             analysis['is_qualified_lead'] = True
-            analysis['qualification_reason'] = f"Uses {website_type.capitalize()} instead of a dedicated website."
-        elif website_type == 'none' or not website:
-            analysis['is_qualified_lead'] = True
-            analysis['qualification_reason'] = "No website found."
-        elif website_type == 'real_website':
-            analysis['qualification_reason'] = "Has established website."
+            
+            # Set qualification reason
+            reasons = []
+            if has_instagram:
+                reasons.append("Instagram found")
+            if has_squarespace:
+                reasons.append("Squarespace booking")
+            if has_booksy:
+                reasons.append("Booksy booking")
+            if has_social_website:
+                reasons.append(f"Uses {website_type.capitalize()}")
+            if has_no_website and not (has_instagram or has_squarespace or has_booksy or has_social_website):
+                reasons.append("No online presence")
+            
+            analysis['qualification_reason'] = f"No online presence - prime candidate ({', '.join(reasons)})"
+            
+            # Add notes about what makes them a good lead
+            if has_no_website and not (has_instagram or has_squarespace or has_booksy or has_social_website):
+                analysis['notes'] += "Business has only phone/address listing. "
         else:
-            analysis['qualification_reason'] = "Website classification is not a direct lead source."
-
+            analysis['qualification_reason'] = "Has established website"
+            analysis['notes'] = "Business has a dedicated website"
+        
         return analysis
+    
+    def _find_instagram_links(self, description: str) -> Dict:
+        """Find Instagram handles in business description."""
+        if not description:
+            return {'found': False, 'handle': ''}
+        
+        # Try each Instagram pattern
+        for pattern in self.instagram_patterns:
+            match = pattern.search(description)
+            if match:
+                handle = match.group(1)
+                # Validate handle (basic check)
+                if len(handle) >= 3 and handle.replace('_', '').replace('.', '').isalnum():
+                    return {'found': True, 'handle': handle}
+        
+        return {'found': False, 'handle': ''}
+    
+    def _find_squarespace_links(self, description: str, website: str) -> Dict:
+        """Find Squarespace booking links."""
+        # Check website first
+        if website and any(domain in website.lower() for domain in self.booking_platforms['squarespace']):
+            return {'found': True, 'link': website}
+        
+        # Check description for Squarespace keywords
+        if description:
+            desc_lower = description.lower()
+            for keyword in self.booking_keywords['squarespace']:
+                if keyword in desc_lower:
+                    return {'found': True, 'link': f"Squarespace booking mentioned in description"}
+        
+        return {'found': False, 'link': ''}
+    
+    def _find_booksy_links(self, description: str, website: str) -> Dict:
+        """Find Booksy booking links."""
+        # Check website first
+        if website and any(domain in website.lower() for domain in self.booking_platforms['booksy']):
+            return {'found': True, 'link': website}
+        
+        # Check description for Booksy keywords
+        if description:
+            desc_lower = description.lower()
+            for keyword in self.booking_keywords['booksy']:
+                if keyword in desc_lower:
+                    return {'found': True, 'link': f"Booksy booking mentioned in description"}
+        
+        return {'found': False, 'link': ''}
     
     def filter_businesses(self, businesses: List[Dict]) -> Dict:
         """

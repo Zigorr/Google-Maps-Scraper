@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
+import random
 
 
 class GoogleMapsScraper:
@@ -28,15 +29,14 @@ class GoogleMapsScraper:
         self.wait = None
         self.headless = headless
         
-        # Intelligent caching system
-        self.business_cache = {}  # URL -> business_data cache
-        self.failed_urls = set()  # URLs that failed extraction
-        
-        # Enhanced error tracking
+        # Enhanced error and duplicate tracking
         self.consecutive_failures = 0
         self.max_consecutive_failures = 5
         self.session_restarts = 0
         self.max_session_restarts = 3
+        
+        self.visited_cids = set()
+        self.extraction_failures = []
         
         self.setup_driver()
     
@@ -45,25 +45,27 @@ class GoogleMapsScraper:
         try:
             chrome_options = Options()
             
-            # Essential flags only - removing aggressive optimizations
+            # Essential flags for stability
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             
-            # Force English locale to avoid Arabic text issues (2024 fix)
+            # Force English locale
             chrome_options.add_argument("--lang=en-US")
             chrome_options.add_argument("--accept-lang=en-US,en")
             
-            # Headless mode for GUI (but more stable)
+            # Set viewport and zoom for consistency
             if self.headless:
                 chrome_options.add_argument("--headless=new")
                 chrome_options.add_argument("--window-size=1920,1080")
             else:
                 chrome_options.add_argument("--start-maximized")
             
-            # Minimal logging suppression
+            chrome_options.add_argument("--force-device-scale-factor=1")
+            
+            # Minimal logging
             chrome_options.add_argument("--log-level=3")
             
-            # Basic anti-detection (minimal)
+            # Anti-detection
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
@@ -103,7 +105,10 @@ class GoogleMapsScraper:
             try:
                 self.driver = webdriver.Chrome(service=service, options=chrome_options)
                 
-                # Cancel timeout if successful
+                # Enforce consistent zoom level
+                self.driver.set_window_size(1920, 1080)
+                self.driver.execute_script("document.body.style.zoom='100%'")
+
                 if hasattr(signal, 'SIGALRM'):
                     signal.alarm(0)
                 
@@ -218,6 +223,29 @@ class GoogleMapsScraper:
         
         return False
     
+    def _scroll_results(self):
+        """Scrolls the search results panel to load more businesses."""
+        try:
+            scrollable_element = self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='feed']"))
+            )
+            
+            print("📜 Scrolling to load more results...")
+            last_height = self.driver.execute_script("return arguments[0].scrollHeight", scrollable_element)
+            
+            for _ in range(10): # Scroll up to 10 times
+                self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scrollable_element)
+                time.sleep(2) # Wait for new results to load
+                
+                new_height = self.driver.execute_script("return arguments[0].scrollHeight", scrollable_element)
+                if new_height == last_height:
+                    print("✅ Reached the end of the results.")
+                    break
+                last_height = new_height
+                
+        except TimeoutException:
+            print("⚠️ Could not find scrollable element for results.")
+            
     def get_business_listings(self) -> List[str]:
         """
         Optimized extraction of business listing URLs with enhanced error recovery.
@@ -295,126 +323,8 @@ class GoogleMapsScraper:
             print(f"❌ Failed to extract business listings: {e}")
             return []
     
-    def _scroll_results(self):
-        """Optimized scrolling through search results to load more businesses."""
-        try:
-            results_panel = self.driver.find_element(By.CSS_SELECTOR, "[role='feed']")
-            
-            # Get initial business count
-            initial_count = len(self.driver.find_elements(By.CSS_SELECTOR, "[role='feed'] a[href*='/maps/place/']"))
-            max_scrolls = 5  # Increased back to 5 for better coverage
-            
-            for i in range(max_scrolls):
-                try:
-                    # Check browser connectivity
-                    if not self._is_browser_connected():
-                        print("⚠️ Browser disconnected during scrolling")
-                        break
-                    
-                    # Get current count before scrolling
-                    current_count = len(self.driver.find_elements(By.CSS_SELECTOR, "[role='feed'] a[href*='/maps/place/']"))
-                    
-                    # Perform optimized scroll
-                    self.driver.execute_script(
-                        "arguments[0].scrollTo(0, arguments[0].scrollHeight);",
-                        results_panel
-                    )
-                    
-                    # Smart wait with longer timeout for better reliability
-                    try:
-                        WebDriverWait(self.driver, 5).until(
-                            lambda driver: len(driver.find_elements(By.CSS_SELECTOR, "[role='feed'] a[href*='/maps/place/']")) > current_count
-                        )
-                        new_count = len(self.driver.find_elements(By.CSS_SELECTOR, "[role='feed'] a[href*='/maps/place/']"))
-                        print(f"📜 Scroll {i+1}/{max_scrolls}: {current_count} → {new_count} businesses")
-                    except TimeoutException:
-                        print(f"📜 Scroll {i+1}/{max_scrolls}: No new content loaded")
-                        # If no new content for 2 consecutive scrolls, stop
-                        if i > 0:
-                            break
-                        time.sleep(0.5)  # Increased pause for better stability
-                        
-                except WebDriverException as e:
-                    if "invalid session id" in str(e).lower():
-                        print("⚠️ Session lost during scrolling")
-                        break
-                    else:
-                        print(f"⚠️ Scroll error: {e}")
-                        break
-                        
-            # Final count
-            final_count = len(self.driver.find_elements(By.CSS_SELECTOR, "[role='feed'] a[href*='/maps/place/']"))
-            print(f"📜 Scrolling complete: {initial_count} → {final_count} total businesses")
-            
-        except Exception as e:
-            print(f"⚠️ Scrolling failed: {e}")
-    
-    def _extract_phone_fallback(self, business_data: Dict):
-        """Enhanced fallback method for phone extraction with improved accuracy."""
-        try:
-            # Method 1: Try button selectors with better extraction
-            phone_selectors = [
-                "button[data-item-id*='phone']",
-                "[data-item-id*='phone'] span",
-                "a[href^='tel:']"
-            ]
-            
-            for selector in phone_selectors:
-                try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    for element in elements:
-                        # Try aria-label first
-                        phone = element.get_attribute('aria-label')
-                        if phone:
-                            # Extract phone number from aria-label
-                            phone_match = re.search(r'[\+]?[\d\s\-\(\)]{10,}', phone)
-                            if phone_match:
-                                formatted_phone = self._clean_phone(phone_match.group())
-                                if formatted_phone:
-                                    business_data['phone'] = formatted_phone
-                                    return
-                        
-                        # Try href for tel: links
-                        href = element.get_attribute('href')
-                        if href and href.startswith('tel:'):
-                            formatted_phone = self._clean_phone(href.replace('tel:', ''))
-                            if formatted_phone:
-                                business_data['phone'] = formatted_phone
-                                return
-                        
-                        # Try text content
-                        text = element.text.strip()
-                        if text:
-                            phone_match = re.search(r'[\+]?[\d\s\-\(\)]{10,}', text)
-                            if phone_match:
-                                formatted_phone = self._clean_phone(phone_match.group())
-                                if formatted_phone:
-                                    business_data['phone'] = formatted_phone
-                                    return
-                except:
-                    continue
-            
-            # Method 2: Search page text for phone patterns
-            page_text = self.driver.find_element(By.TAG_NAME, "body").text
-            phone_patterns = [
-                r'\+?1?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})',
-                r'\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})',
-                r'(\d{3})[-.\s]?(\d{3})[-.\s]?(\d{4})'
-            ]
-            
-            for pattern in phone_patterns:
-                matches = re.findall(pattern, page_text)
-                if matches:
-                    match = matches[0]
-                    if len(match) == 3:
-                        formatted_phone = f"({match[0]}) {match[1]}-{match[2]}"
-                        business_data['phone'] = formatted_phone
-                        return
-        except:
-            pass
-    
     def _clean_phone(self, phone: str) -> str:
-        """Clean and format phone number."""
+        """Cleans and formats phone numbers to (XXX) XXX-XXXX."""
         if not phone:
             return ""
         
@@ -434,32 +344,82 @@ class GoogleMapsScraper:
         return ""
     
     def _clean_address(self, address: str) -> str:
-        """Clean address text by removing Arabic characters and prefixes."""
+        """Removes Arabic text from address and formats it."""
         if not address:
             return ""
-        
-        # Remove Arabic characters
-        address = re.sub(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+', '', address)
-        
-        # Remove common prefixes
-        address = re.sub(r'^(Address:|العنوان:)', '', address).strip()
-        
-        # Extract US address pattern
-        us_address_pattern = r'(\d+[^,]+(?:St|Ave|Rd|Blvd|Dr|Ln|Way|Ct|Pl)[^,]*,\s*[^,]+,\s*[A-Z]{2}\s*\d{5})'
-        match = re.search(us_address_pattern, address, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        
-        # Fallback: remove common Arabic words and return cleaned text
-        cleaned = re.sub(r'(الولايات المتحدة|، الولايات المتحدة)', '', address).strip()
-        if len(cleaned) > 10:  # Reasonable address length
-            return cleaned
-        
+        # Remove common Arabic prefixes/suffixes and normalize
+        address = re.sub(r'[\u0600-\u06FF]+', '', address).strip()
+        address = re.sub(r'\s*([,GJWX])\s*', r'\1', address)
+        address = address.replace("Unnamed Road", "").strip(", ")
         return address
-    
+
+    def _get_element_text(self, by: By, value: str) -> Optional[str]:
+        """Safely find an element by a locator and return its text."""
+        try:
+            element = self.wait.until(EC.presence_of_element_located((by, value)))
+            return element.text
+        except (NoSuchElementException, TimeoutException):
+            return None
+
+    def _get_element_attribute(self, by: By, value: str, attribute: str) -> Optional[str]:
+        """Safely find an element and return the value of a given attribute."""
+        try:
+            element = self.wait.until(EC.presence_of_element_located((by, value)))
+            return element.get_attribute(attribute)
+        except (NoSuchElementException, TimeoutException):
+            return None
+
+    def _classify_website(self, url: str) -> str:
+        """Classifies a URL into predefined categories."""
+        if not url or not isinstance(url, str) or not re.match(r'^https?://', url):
+            return "N/A"
+        
+        url_lower = url.lower()
+        if 'instagram.com' in url_lower:
+            return 'instagram'
+        if 'facebook.com' in url_lower:
+            return 'facebook'
+        if 'booksy.com' in url_lower:
+            return 'booksy'
+        if 'squarespace.com' in url_lower:
+            return 'squarespace'
+        
+        return 'real_website'
+
+    def _run_validation_pass(self, scraped_data: List[Dict], sample_ratio: float = 0.05) -> None:
+        """
+        Validates a sample of scraped data to ensure selectors are still working.
+        """
+        if not scraped_data:
+            return
+
+        sample_size = int(len(scraped_data) * sample_ratio)
+        if sample_size == 0:
+            return
+
+        print(f"🕵️  Running validation pass on {sample_size} random samples...")
+        validation_sample = random.sample(scraped_data, sample_size)
+        failures = 0
+
+        for business in validation_sample:
+            self.driver.get(business['url'])
+            time.sleep(2)  # Allow page to load
+            
+            # Re-extract and validate name
+            current_name = self._get_element_text(By.CSS_SELECTOR, "h1.DUwDvf")
+            if not current_name or current_name.strip() != business['name'].strip():
+                failures += 1
+                print(f"❌ Validation failed for: {business['name']} (URL: {business['url']})")
+
+        failure_rate = (failures / sample_size) * 100
+        print(f"📈 Validation failure rate: {failure_rate:.2f}%")
+
+        if failure_rate > 5.0:
+            print("🚨 High validation failure rate detected! Selectors may be outdated.")
+            
     def _is_valid_website(self, url: str) -> bool:
-        """Check if URL is a valid website to extract."""
-        if not url:
+        """Validates if a URL is a real website and not a generic booking/social site."""
+        if not url or not isinstance(url, str):
             return False
         
         # Exclude Google and internal links
@@ -544,282 +504,84 @@ class GoogleMapsScraper:
     
     def extract_business_data(self, business_url: str) -> Optional[Dict]:
         """
-        Extract detailed information from a single business listing with caching.
-        
-        Args:
-            business_url (str): URL of the business listing
-            
-        Returns:
-            Optional[Dict]: Business data or None if extraction failed
+        Extracts detailed business data from its Google Maps page with structured logging.
         """
-        # Check cache first
-        if business_url in self.business_cache:
-            print(f"📋 Using cached data for: {business_url}")
-            return self.business_cache[business_url]
-        
-        # Skip if previously failed
-        if business_url in self.failed_urls:
-            print(f"⚠️ Skipping previously failed URL: {business_url}")
+        # Updated CID extraction to handle new Google Maps URL format
+        cid = None
+        # First, try to extract the CID from the 'data' parameter in the URL
+        fid_match = re.search(r'!1s0x[a-f0-9]+:0x([a-f0-9]+)', business_url, re.IGNORECASE)
+        if fid_match:
+            hex_cid = fid_match.group(1)
+            cid = str(int(hex_cid, 16))
+        else:
+            # If the new format is not found, fall back to the classic 'cid=' parameter
+            cid_match = re.search(r'cid=(\d+)', business_url)
+            if cid_match:
+                cid = cid_match.group(1)
+
+        # Use the extracted CID for duplicate checking, or the full URL as a fallback
+        unique_identifier = cid if cid else business_url
+        if unique_identifier in self.visited_cids:
+            print(f"⏭️ Skipping duplicate business (Identifier: {unique_identifier})")
             return None
+        self.visited_cids.add(unique_identifier)
+
+        if not cid:
+            print("⚠️ Could not extract CID from URL. Using full URL for uniqueness check.")
+
+        # Navigate to business page
+        self.driver.get(business_url)
         
-        max_retries = 3
-        retry_delay = 1
-        
-        for attempt in range(max_retries):
-            try:
-                # Check browser connectivity before extraction
-                if not self._is_browser_connected():
-                    print(f"❌ Browser not connected for extraction attempt {attempt + 1}")
-                    if attempt < max_retries - 1:
-                        self._recover_browser_session()
-                        continue
-                    else:
-                        self.failed_urls.add(business_url)
-                        return None
-                
-                print(f"🔍 Extracting data from: {business_url} (attempt {attempt + 1}/{max_retries})")
-                
-                # Cross-platform timeout mechanism (reduced for faster processing)
-                import threading
-                extraction_timeout = 15  # 15 seconds max per business (reduced from 30)
-                timeout_occurred = threading.Event()
-                
-                def extraction_worker():
-                    """Worker function that performs the actual extraction."""
-                    try:
-                        # Navigate to business page with English locale
-                        url_with_locale = business_url
-                        if '?' in url_with_locale:
-                            url_with_locale += "&hl=en&gl=us"
-                        else:
-                            url_with_locale += "?hl=en&gl=us"
-                        self.driver.get(url_with_locale)
-                        
-                        # Wait for page to load with shorter timeout
-                        try:
-                            WebDriverWait(self.driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "h1, [data-section-id='hero']"))
-                            )
-                        except TimeoutException:
-                            print(f"⚠️ Page load timeout on attempt {attempt + 1}, proceeding with extraction")
-                        
-                        business_data = {
-                            'name': '',
-                            'phone': '',
-                            'address': '',
-                            'website': '',
-                            'description': '',
-                            'url': business_url
-                        }
-                        
-                        # Updated selectors based on current Google Maps structure (2024)
-                        # These selectors were verified to work with 100% success rate and <0.01s response time
-                        extraction_map = {
-                            'name': [
-                                "h1.DUwDvf",  # Primary working selector (100% success, 0.006s)
-                                "h1",  # Fallback (100% success, 0.006s)
-                                "[role='main'] h1"  # Secondary fallback (100% success, 0.007s)
-                            ],
-                            'phone': [
-                                "[data-item-id*='phone'] span",  # Primary working selector (100% success, 0.006s)
-                                "button[data-item-id*='phone']",  # Secondary (100% success, 0.006s)
-                                "a[href^='tel:']"  # Fallback (100% success, 0.007s)
-                            ],
-                            'address': [
-                                "button[data-item-id*='address']",  # Primary working selector (100% success, 0.006s)
-                                "[data-item-id*='address'] span"  # Fallback (100% success, 0.006s)
-                            ]
-                        }
-                        
-                        # Extract basic info with timeout protection
-                        for field, selectors in extraction_map.items():
-                            if timeout_occurred.is_set():
-                                break
-                            for selector in selectors:
-                                try:
-                                    # Quick find with optimized timeout
-                                    element = WebDriverWait(self.driver, 1).until(
-                                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                                    )
-                                    text = element.get_attribute('aria-label') or element.text
-                                    if text and text.strip():
-                                        business_data[field] = text.strip()
-                                        break
-                                except:
-                                    continue
-                            
-                            # Quick fallback for phone extraction
-                            if field == 'phone' and not business_data['phone']:
-                                try:
-                                    self._extract_phone_fallback(business_data)
-                                except:
-                                    pass
-                            
-                            # Clean address data
-                            if field == 'address' and business_data['address']:
-                                business_data['address'] = self._clean_address(business_data['address'])
-                        
-                        # Quick website extraction with timeout protection
-                        if not timeout_occurred.is_set():
-                            try:
-                                # Updated website selectors (2024) - verified working
-                                website_selectors = [
-                                    "a[href*='http']:not([href*='google.com'])",  # Primary working selector (100% success, 0.006s)
-                                    "a[href*='instagram.com']",  # Specific social media
-                                    "a[href*='facebook.com']",
-                                    "a[href*='squarespace.com']",
-                                    "a[href*='booksy.com']",
-                                    "[data-item-id*='authority'] a",  # Legacy fallback
-                                    "[data-item-id*='website'] a"  # Legacy fallback
-                                ]
-                                
-                                for selector in website_selectors:
-                                    if timeout_occurred.is_set():
-                                        break
-                                    try:
-                                        elements = WebDriverWait(self.driver, 1).until(
-                                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
-                                        )
-                                        for element in elements:
-                                            href = element.get_attribute('href')
-                                            if href and self._is_valid_website(href):
-                                                business_data['website'] = href
-                                                break
-                                        if business_data['website']:
-                                            break
-                                    except:
-                                        continue
-                                        
-                            except Exception as e:
-                                print(f"⚠️ Website extraction skipped due to timeout protection")
-                        
-                        # Quick description extraction (optional)
-                        if not timeout_occurred.is_set():
-                            try:
-                                description_selectors = [
-                                    "[data-section-id='overview'] span",
-                                    ".section-editorial-quote",
-                                    "[class*='editorial'] span"
-                                ]
-                                
-                                description_texts = []
-                                for selector in description_selectors:
-                                    if timeout_occurred.is_set():
-                                        break
-                                    try:
-                                        elements = WebDriverWait(self.driver, 1).until(
-                                            EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
-                                        )
-                                        for element in elements:
-                                            text = element.text.strip()
-                                            if text and len(text) > 10 and text not in description_texts:
-                                                description_texts.append(text)
-                                                break  # Only get first description
-                                        if description_texts:
-                                            break
-                                    except:
-                                        continue
-                                
-                                if description_texts:
-                                    business_data['description'] = description_texts[0]  # Just first one
-                                    
-                            except Exception as e:
-                                print(f"⚠️ Description extraction skipped due to timeout protection")
-                        
-                        return business_data
-                        
-                    except Exception as e:
-                        print(f"❌ Error in extraction worker: {e}")
-                        return None
-                
-                # Run extraction in thread with timeout
-                result = [None]  # Use list to store result from thread
-                
-                def run_extraction():
-                    result[0] = extraction_worker()
-                
-                extraction_thread = threading.Thread(target=run_extraction)
-                extraction_thread.daemon = True
-                extraction_thread.start()
-                extraction_thread.join(timeout=extraction_timeout)
-                
-                if extraction_thread.is_alive():
-                    # Timeout occurred
-                    print(f"⏰ Extraction timeout on attempt {attempt + 1} (>{extraction_timeout}s)")
-                    timeout_occurred.set()
-                    # Force thread to recognize timeout
-                    time.sleep(1)
-                    if attempt < max_retries - 1:
-                        print(f"🔄 Retrying extraction in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        print("❌ All extraction attempts timed out")
-                        self.failed_urls.add(business_url)
-                        return None
-                
-                business_data = result[0]
-                if business_data is None:
-                    print(f"⚠️ No data extracted on attempt {attempt + 1}")
-                    if attempt < max_retries - 1:
-                        print(f"🔄 Retrying extraction in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        print("❌ Failed to extract data after all attempts")
-                        self.failed_urls.add(business_url)
-                        return None
-                
-                # Validate extracted data
-                if not business_data.get('name'):
-                    print(f"⚠️ No business name found on attempt {attempt + 1}")
-                    if attempt < max_retries - 1:
-                        print(f"🔄 Retrying extraction in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        print("❌ Failed to extract business name after all attempts")
-                        self.failed_urls.add(business_url)
-                        return None
-                
-                # Cache successful extraction
-                self.business_cache[business_url] = business_data
-                self.consecutive_failures = 0  # Reset failure counter
-                return business_data
-                
-            except WebDriverException as e:
-                print(f"❌ WebDriver error on extraction attempt {attempt + 1}: {e}")
-                if "invalid session id" in str(e).lower():
-                    print("🔄 Session lost, attempting recovery...")
-                    if attempt < max_retries - 1:
-                        self._recover_browser_session()
-                        continue
-                    else:
-                        self.failed_urls.add(business_url)
-                        return None
-                elif attempt < max_retries - 1:
-                    print(f"🔄 Retrying extraction in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    print("❌ All extraction attempts failed")
-                    self.failed_urls.add(business_url)
-                    return None
-            except Exception as e:
-                print(f"❌ Extraction failed on attempt {attempt + 1}: {e}")
-                if attempt < max_retries - 1:
-                    print(f"🔄 Retrying extraction in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    print("❌ All extraction attempts failed")
-                    self.failed_urls.add(business_url)
-                    return None
-        
-        # If we get here, all attempts failed
-        self.failed_urls.add(business_url)
-        return None
-    
+        # Scroll to load lazy content
+        try:
+            scrollable_panel = self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[role='main']"))
+            )
+            for _ in range(3):  # Scroll a few times to be sure
+                self.driver.execute_script("arguments[0].scrollTop += 500;", scrollable_panel)
+                time.sleep(0.5)
+        except TimeoutException:
+            print("⚠️ Could not find scrollable panel for lazy loading.")
+
+        # Robust data extraction with fallbacks
+        name = self._get_element_text(By.CSS_SELECTOR, "h1.DUwDvf")
+        phone = self._get_element_text(By.CSS_SELECTOR, "button[data-item-id^='phone'] div.rogA2c")
+        address = self._get_element_text(By.CSS_SELECTOR, "button[data-item-id='address'] div.rogA2c")
+        website = self._get_element_attribute(By.CSS_SELECTOR, "a[data-item-id='authority']", "href")
+
+        # Fallback for website if authority link is not found
+        if not website:
+            website = self._get_element_attribute(By.CSS_SELECTOR, "a[aria-label^='Website:']", "href")
+            
+        # Log failure if name is missing (critical field)
+        if not name:
+            failure_log = {
+                "url": business_url,
+                "timestamp": time.time(),
+                "missing_fields": ["name"],
+                "html_snapshot": self.driver.page_source[:1000]  # Snippet of HTML
+            }
+            self.extraction_failures.append(failure_log)
+            print(f"❌ Failed to extract critical data (name) for {business_url}")
+            return None
+
+        # Clean and validate data
+        phone = self._clean_phone(phone) if phone else "N/A"
+        address = self._clean_address(address) if address else "N/A"
+        website_url = website if self._is_valid_website(website) else "N/A"
+        website_type = self._classify_website(website_url)
+
+        business_data = {
+            "name": name,
+            "phone": phone,
+            "address": address,
+            "website": website_url,
+            "website_type": website_type,
+            "url": business_url
+        }
+
+        return business_data
+
     def _is_website_link(self, url: str) -> bool:
         """
         Check if a URL is a legitimate website link (not social media or Google services).
@@ -970,6 +732,17 @@ class GoogleMapsScraper:
                 print(f"⚠️ Failed extractions: {failed_extractions}")
             print(f"🔄 Session restarts: {self.session_restarts}")
             
+            # Run validation pass on scraped data
+            self._run_validation_pass(all_business_data)
+
+            # Report extraction failures
+            if self.extraction_failures:
+                print("\n--- Extraction Failure Report ---")
+                print(f"Total failures: {len(self.extraction_failures)}")
+                for failure in self.extraction_failures:
+                    print(f"URL: {failure['url']}, Missing: {failure['missing_fields']}")
+                print("---------------------------------")
+
             return all_business_data
             
         except Exception as e:

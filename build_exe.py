@@ -143,7 +143,7 @@ Contact the person who provided this tool for support.
 Built with ❤️ for lead generation success!
 """
     
-    with open(os.path.join(dist_folder, "README.txt"), "w") as f:
+    with open(os.path.join(dist_folder, "README.txt"), "w", encoding="utf-8") as f:
         f.write(instructions)
     
     print(f"📦 Distribution package created: {dist_folder}/")
